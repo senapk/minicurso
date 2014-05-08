@@ -9,7 +9,6 @@ struct Game{
     int max_acertos;
     int max_erros;
     int y_chao;
-    int nivel;
 
     Game(int largura, int altura){
         this->largura = largura;
@@ -19,11 +18,22 @@ struct Game{
         max_acertos = 25;
         max_erros = 10;
         y_chao = altura - 50;
-        nivel = 1;
     }
+	
+	bool loose(){
+		if(erros > max_erros)
+            return true;
+        return false;
+	}
+	
+	bool win(){
+		if(acertos > max_acertos)
+			return true;
+        return false;
+	}
 
     bool over(){
-        if(erros >= max_erros)
+        if(loose() || win())
             return true;
         return false;
     }
@@ -39,7 +49,7 @@ struct Game{
 
     void msgFinal(){
         Escritor e;
-        if (over())
+        if (loose())
             e.write(0,10,"Treine mais meu filho!\n");
         else
             e.write(0,10,"Voce eh quase um X-MEN, parabens Wolverine!\n");
@@ -51,18 +61,22 @@ struct Tecla{
     int limX;
     char value;
     int tam;
+    int R, G, B;
 
-    void init( int nivel ){
+    void init(){
         value = Util::rand()%26+'a';
-        x   = Util::rand() % limX;
-        vy  = Util::rand()% 10 + 2 + nivel;
-        tam = Util::rand()%10 + 10;
+        x = (Util::rand() % limX);
         y = 0;
+        tam = Util::rand()%10 + 10;
+        vy = 3 + Util::rand() % 8;
+        R = Util::rand() % 255;
+        G = Util::rand() % 255;
+        B = Util::rand() % 255;
     }
 
     Tecla(int limX){
         this->limX = limX;
-        init(0);
+        init();
     }
 
 
@@ -71,20 +85,42 @@ struct Tecla{
         x += Util::rand()%10 - 5;
     }
 
-    void show(){
-        Escritor w;
-        w.setSize(tam);
-        w.write(x, y, Util::str("%c",value));
+    void show(Escritor &e){
+		e.setSize(tam);
+		e.setColor(Color(R, G, B));
+        e.write(x, y, Util::str("%c",value));
     }
 };
 
-struct Chao{
+struct Cenario{
     int y;
     int largura;
-    Chao(int y, int largura){
+    Imagem imagem;
+    int xm, ym;
+    
+    Tecla ultima;
+    Cenario(int y, int altura, int largura, string fundo_path):
+    ultima(largura){
+		imagem.load(fundo_path, largura, altura);
         this->y = y;
         this->largura = largura;
+        xm = largura / 2 - 30;
+		ym = altura / 2 - 40;
+		ultima.x = xm;
+		ultima.y = ym;
     }
+    
+    
+    void comerLetra( const Tecla &tecla ){
+		ultima = tecla;
+	}
+	
+	void mostrarLingua(Pintor &pintor){
+		pintor.setColor(Color::Red);
+		pintor.setThickness(10);
+		pintor.drawLine(xm, ym, ultima.x, ultima.y);
+	}
+		
 
     bool hit(Tecla t){
         if(t.y + 20 >= y)
@@ -96,8 +132,12 @@ struct Chao{
         y -= 10;
     }
 
-    void show(){
-        Pintor p;
+    void descer(){
+        y += 1;
+    }
+
+    void show(Pintor &p){
+		imagem.draw(0,0);
         p.setThickness(3);
         p.setColor(Color::Green);
         p.drawLine(0, y, largura, y);
@@ -107,8 +147,10 @@ struct Chao{
 int main(){
     Game game(1000, 750);
     Janela janela(game.largura, game.altura,"Digite ou morra!");
-    Chao chao(700, game.largura);
+    janela.setBackgroundColor(Color::White);
+    Cenario cenario(700, game.altura, game.largura, "melisma.jpg");
     Escritor escritor;
+    Pintor pintor;
 
     list<Tecla> teclas;
 
@@ -121,13 +163,17 @@ int main(){
         for( Tecla &tecla : teclas ){
             if(c == tecla.value) {
                 game.acertos++;
-                tecla.init(game.nivel);
-                game.nivel++;
+                cenario.comerLetra(tecla);
+                
+                tecla.init();
+                
+                if((game.acertos % 5) == 0)
+					teclas.push_back(Tecla(game.largura - 20));
             }
-            if(chao.hit(tecla)){
+            if(cenario.hit(tecla)){
                 game.erros++;
-                tecla.init(game.nivel);
-                chao.subir();
+                tecla.init();
+                cenario.subir();
                 Tecla t(game.largura - 20);
                 teclas.push_back(t);
             }
@@ -136,18 +182,15 @@ int main(){
         //UPDATE
         for( auto &tecla : teclas)
             tecla.update();
-        if(game.nivel > 8){
-            teclas.push_back(Tecla(game.largura - 20));
-            game.nivel = 3;
-        }
-
 
         //SHOW
         janela.clear();
+        cenario.show(pintor);
+        cenario.mostrarLingua(pintor);
         game.show();
-        for(auto tecla : teclas)
-            tecla.show();
-        chao.show();
+        for(auto &tecla : teclas)
+            tecla.show(escritor);
+        
         janela.update();
 
         //SLEEP
